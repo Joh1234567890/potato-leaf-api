@@ -2,5 +2,10 @@ services:
   - type: web
     name: potato-leaf-api
     env: python
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python app.py"
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: PIP_DISABLE_PIP_VERSION_CHECK
+        value: 1
