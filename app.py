@@ -12,13 +12,18 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Load model with error handling
+# Load TensorFlow Lite model
 try:
-    model = tf.keras.models.load_model('your_model_path.h5')
-    logger.info("Model loaded successfully")
+    interpreter = tf.lite.Interpreter(model_path='model.tflite')
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+    logger.info("TFLite model loaded successfully")
+    model_loaded = True
 except Exception as e:
     logger.error(f"Failed to load model: {e}")
-    model = None
+    interpreter = None
+    model_loaded = False
 
 @app.route('/', methods=['GET'])
 def health_check():
@@ -26,21 +31,33 @@ def health_check():
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    if model is None:
+    if not model_loaded:
         return jsonify({"error": "Model not loaded"}), 500
     
     try:
-        # Your prediction logic here
+        # Get image from request
         file = request.files['image']
         image = Image.open(io.BytesIO(file.read()))
         
-        # Preprocess image
-        image = image.resize((224, 224))  # Adjust size as needed
-        image_array = np.array(image) / 255.0
+        # Preprocess image for TFLite
+        # Get input shape from model
+        input_shape = input_details[0]['shape']
+        target_size = (input_shape[1], input_shape[2])  # Height, Width
+        
+        # Resize and preprocess
+        image = image.resize(target_size)
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        image_array = np.array(image, dtype=np.float32) / 255.0
         image_array = np.expand_dims(image_array, axis=0)
         
-        # Make prediction
-        predictions = model.predict(image_array)
+        # Run inference with TFLite
+        interpreter.set_tensor(input_details[0]['index'], image_array)
+        interpreter.invoke()
+        
+        # Get prediction
+        predictions = interpreter.get_tensor(output_details[0]['index'])
         
         return jsonify({
             "prediction": predictions.tolist(),
